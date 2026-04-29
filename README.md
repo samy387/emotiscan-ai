@@ -1,54 +1,23 @@
-# EmotiScan AI — Method 1: App + Backend Server
+# EmotiScan AI 🚀
 
-## Architecture
-```
-[app.html]  →  POST /analyze  →  [server.py]  →  Claude API  →  response
-  Mobile App                      Python Backend               AI Model
-```
+EmotiScan AI is a completely **free, offline, and instant** web application that analyzes facial emotions in photos using Machine Learning directly in your web browser. 
 
-## Setup (2 steps)
+## Features
+- **100% Offline & Private:** No images are ever sent to a server. All processing happens entirely on your own computer.
+- **Zero Cost:** Absolutely no API keys, cloud credits, or subscriptions required.
+- **Lightning Fast:** Uses your device's hardware via WebGL to instantly detect faces and map emotions.
+- **Serverless:** No Python backend, no installations, no complex environments.
 
-### 1. Start the backend server
-```bash
-# Install dependencies
-pip install flask flask-cors anthropic
+## How to Run
 
-# Set your API key
-export ANTHROPIC_API_KEY="sk-ant-YOUR_KEY_HERE"
+Because this app runs entirely in the browser using `face-api.js`, you do not need to install Python or set up any backend servers!
 
-# Start the server
-python server.py
-# → Running on http://localhost:5000
-```
+1. **Simply double-click the `app.html` file** to open it in your web browser (Chrome, Edge, Safari, Firefox).
+2. The app will quickly download tiny AI models into your browser's cache.
+3. Click to upload a photo of a face.
+4. Get instant emotional analysis!
 
-### 2. Open the mobile app
-Open `app.html` in your browser — it will connect to the server automatically.
+*(Note: Ensure you have an active internet connection the very first time you open the app so it can download the AI models from the CDN. After the first load, it will work blazingly fast).*
 
-## API Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Server status check |
-| POST | `/analyze` | Analyze face emotion |
-
-### POST /analyze
-**Request:**
-```json
-{ "image": "<base64 string>", "media_type": "image/jpeg" }
-```
-
-**Response:**
-```json
-{
-  "emotion": "Happy",
-  "confidence": 94,
-  "emoji": "😊",
-  "scores": { "Happy": 94, "Sad": 2, "Angry": 1, ... },
-  "description": "The person appears genuinely cheerful."
-}
-```
-
-## Files
-- `server.py` — Python Flask backend (the AI middleman)
-- `app.html` — Mobile-style frontend (the client app)
-- `README.md` — This file
+---
+*Built with ❤️ using HTML, CSS, JavaScript, and face-api.js.*

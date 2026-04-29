@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>EmotiScan AI</title>
+<title>EmotiScan AI - Offline</title>
+<!-- Load Face-API.js from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/dist/face-api.js"></script>
+
 <style>
   @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap');
 
@@ -76,7 +79,6 @@
     align-items: center;
     justify-content: space-between;
   }
-  .header-left {}
   .app-eyebrow {
     font-size: 10px;
     font-weight: 600;
@@ -235,24 +237,18 @@
   .bar-fill { height: 100%; border-radius: 3px; background: var(--text); width: 0; transition: width 0.9s cubic-bezier(.4,0,.2,1); }
   .bar-val { font-size: 10px; font-family: 'Space Mono', monospace; color: var(--text3); width: 34px; text-align: right; }
 
-  /* Server config note */
-  .config-note {
+  /* Success badge */
+  .offline-badge {
     margin: 0 18px 18px;
     padding: 10px 14px;
-    background: var(--surface2);
-    border: 1px solid var(--border);
+    background: var(--success-bg);
+    border: 1px solid var(--success-border);
     border-radius: 10px;
     font-size: 11px;
-    color: var(--text2);
+    color: var(--success-text);
     line-height: 1.5;
-  }
-  .config-note code {
-    font-family: 'Space Mono', monospace;
-    font-size: 10px;
-    background: var(--surface3);
-    padding: 1px 5px;
-    border-radius: 4px;
-    color: var(--text);
+    text-align: center;
+    font-weight: 500;
   }
 </style>
 </head>
@@ -263,7 +259,7 @@
   <div class="status-bar">
     <span>9:41</span>
     <div class="notch"></div>
-    <span>5G ●●●</span>
+    <span>OFFLINE AI</span>
   </div>
 
   <!-- Header -->
@@ -273,8 +269,8 @@
       <div class="app-title">Emotion Detector</div>
     </div>
     <div class="server-indicator">
-      <div class="dot" id="dot"></div>
-      <span id="serverStatus">localhost:5000</span>
+      <div class="dot busy" id="dot"></div>
+      <span id="serverStatus">Loading AI...</span>
     </div>
   </div>
 
@@ -294,20 +290,20 @@
 
   <!-- Pipeline Steps -->
   <div class="section">
-    <div class="section-label">Server Pipeline</div>
+    <div class="section-label">Local Processing Pipeline</div>
     <div class="steps">
       <div class="step" id="s1"><div class="step-n">1</div><div class="step-label">User uploads image</div><div class="step-ico">📱</div></div>
-      <div class="step" id="s2"><div class="step-n">2</div><div class="step-label">App → POST /analyze (server)</div><div class="step-ico">📡</div></div>
-      <div class="step" id="s3"><div class="step-n">3</div><div class="step-label">Server calls Claude Vision API</div><div class="step-ico">🧠</div></div>
-      <div class="step" id="s4"><div class="step-n">4</div><div class="step-label">Server returns JSON result</div><div class="step-ico">⬇️</div></div>
-      <div class="step" id="s5"><div class="step-n">5</div><div class="step-label">App displays emotion</div><div class="step-ico">✨</div></div>
+      <div class="step" id="s2"><div class="step-n">2</div><div class="step-label">Local AI finds face</div><div class="step-ico">🔍</div></div>
+      <div class="step" id="s3"><div class="step-n">3</div><div class="step-label">Local AI analyzes expressions</div><div class="step-ico">🧠</div></div>
+      <div class="step" id="s4"><div class="step-n">4</div><div class="step-label">Generate confidence scores</div><div class="step-ico">📊</div></div>
+      <div class="step" id="s5"><div class="step-n">5</div><div class="step-label">Display emotion</div><div class="step-ico">✨</div></div>
     </div>
   </div>
 
   <!-- Analyze Button -->
   <div class="btn-wrap">
     <button class="btn" id="btn" disabled onclick="analyze()">
-      <span id="btnLabel">Analyze Emotion</span>
+      <span id="btnLabel"><div class="spinner"></div> Downloading AI Models...</span>
     </button>
   </div>
 
@@ -329,27 +325,15 @@
     <div class="bars" id="rBars"></div>
   </div>
 
-  <!-- Server config info -->
-  <div class="config-note">
-    <strong>Backend server required.</strong> Start with:<br>
-    <code>export ANTHROPIC_API_KEY="sk-ant-..."</code><br>
-    <code>python server.py</code><br>
-    Then open this file. The app POSTs to <code>http://localhost:5000/analyze</code>.
+  <div class="offline-badge">
+    ✨ Running 100% locally and completely free in your browser. No API keys or backend servers needed!
   </div>
 </div>
 
 <script>
-  const SERVER = "http://localhost:5000";
-  let imgBase64 = null;
-
-  // Check server health on load
-  (async () => {
-    try {
-      const r = await fetch(SERVER + "/health");
-      if (r.ok) { setDot("ok", "Server online"); }
-      else { setDot("error", "Server error"); }
-    } catch { setDot("error", "Server offline"); }
-  })();
+  const MODEL_URL = "https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.12/model/";
+  let modelsLoaded = false;
+  let currentImage = null;
 
   function setDot(state, label) {
     const d = document.getElementById("dot");
@@ -358,17 +342,47 @@
     s.textContent = label;
   }
 
+  // Load AI Models
+  (async () => {
+    try {
+      await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
+      await faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL);
+      
+      modelsLoaded = true;
+      setDot("ok", "AI Ready (Local)");
+      document.getElementById("btnLabel").textContent = "Analyze Emotion";
+      
+      if (currentImage) {
+          document.getElementById("btn").disabled = false;
+      }
+    } catch (e) { 
+      setDot("error", "Failed to load AI"); 
+      document.getElementById("errBox").textContent = "Error: Failed to download AI models from CDN. Check your internet connection.";
+      document.getElementById("errBox").style.display = "block";
+      document.getElementById("btnLabel").textContent = "Error Loading AI";
+    }
+  })();
+
   function handleFile(e) {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
     reader.onload = ev => {
-      imgBase64 = ev.target.result.split(",")[1];
-      document.getElementById("preview").src = ev.target.result;
-      document.getElementById("preview").style.display = "block";
+      const img = document.getElementById("preview");
+      
+      img.onload = () => {
+        currentImage = img;
+        if (modelsLoaded) {
+            document.getElementById("btn").disabled = false;
+        }
+      };
+      
+      img.src = ev.target.result;
+      
+      img.style.display = "block";
       document.getElementById("placeholder").style.display = "none";
       document.getElementById("zone").classList.add("filled");
-      document.getElementById("btn").disabled = false;
+      
       setStep(1);
       document.getElementById("resultCard").classList.remove("show");
       document.getElementById("errBox").style.display = "none";
@@ -384,7 +398,7 @@
   }
 
   async function analyze() {
-    if (!imgBase64) return;
+    if (!currentImage || !modelsLoaded) return;
     const btn = document.getElementById("btn");
     const lbl = document.getElementById("btnLabel");
     const err = document.getElementById("errBox");
@@ -392,30 +406,59 @@
     err.style.display = "none";
     document.getElementById("resultCard").classList.remove("show");
 
-    setDot("busy", "Sending…");
-    setStep(2); lbl.innerHTML = '<div class="spinner"></div> Sending to server…';
-    await wait(500);
-
-    setStep(3); lbl.innerHTML = '<div class="spinner"></div> AI analyzing…';
-    setDot("busy", "Claude Vision API…");
+    setDot("busy", "Scanning...");
+    setStep(2); lbl.innerHTML = '<div class="spinner"></div> Finding face…';
+    await wait(200);
 
     try {
-      const res = await fetch(SERVER + "/analyze", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: imgBase64, media_type: "image/jpeg" })
-      });
+      // Step 2: Find Face
+      const options = new faceapi.TinyFaceDetectorOptions();
+      const detection = await faceapi.detectSingleFace(currentImage, options).withFaceExpressions();
 
-      if (!res.ok) {
-        const e = await res.json();
-        throw new Error(e.error || "Server returned " + res.status);
+      if (!detection) {
+        throw new Error("No face detected in the image! Try a clearer photo.");
       }
 
-      const result = await res.json();
+      setStep(3); lbl.innerHTML = '<div class="spinner"></div> AI analyzing…';
+      await wait(300);
 
-      setStep(4); lbl.innerHTML = '<div class="spinner"></div> Receiving result…';
-      setDot("busy", "Rendering…");
-      await wait(400);
+      // Step 4: Formatting Scores
+      setStep(4); lbl.innerHTML = '<div class="spinner"></div> Generating result…';
+      await wait(200);
+
+      const expr = detection.expressions;
+      const scores = {
+        "Happy": expr.happy * 100,
+        "Sad": expr.sad * 100,
+        "Angry": expr.angry * 100,
+        "Surprised": expr.surprised * 100,
+        "Neutral": expr.neutral * 100,
+        "Fearful": expr.fearful * 100,
+        "Disgusted": expr.disgusted * 100,
+      };
+
+      // Find Dominant
+      let dominant = "Neutral";
+      let maxScore = 0;
+      for (const [key, val] of Object.entries(scores)) {
+          if (val > maxScore) {
+              maxScore = val;
+              dominant = key;
+          }
+      }
+
+      const emoji_map = {
+        "Happy": "😊", "Sad": "😢", "Angry": "😠", 
+        "Surprised": "😲", "Neutral": "😐", "Fearful": "😨", "Disgusted": "🤢"
+      };
+
+      const result = {
+        emotion: dominant,
+        confidence: Math.round(maxScore),
+        emoji: emoji_map[dominant] || "😐",
+        scores: scores,
+        description: `The local AI detected a ${dominant.toLowerCase()} expression.`
+      };
 
       setStep(5, "done");
       setDot("ok", "Analysis complete");
@@ -425,8 +468,8 @@
 
     } catch (e) {
       setStep(2, "err");
-      setDot("error", "Server error");
-      err.textContent = "Error: " + e.message + (e.message.includes("fetch") ? " — Is the server running? (python server.py)" : "");
+      setDot("error", "Detection failed");
+      err.textContent = "Error: " + e.message;
       err.style.display = "block";
       lbl.textContent = "Retry";
       btn.disabled = false;
